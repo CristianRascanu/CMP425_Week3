@@ -66,6 +66,8 @@ int main() {
 	float game_speed = 1.0f;
 	float send_rate = 0.1f;
 	float send_timer = 0;
+	
+	bool join_sent = false;
 
 	while (window.isOpen()) {
 		// Calculate dt.
@@ -90,22 +92,55 @@ int main() {
 				game.HandleEvents(event);
 		}
 		// Packet to hold our updates.
-		sf::Packet packet;
 		if (is_observer) {
+			sf::Packet packet;
 			std::optional<sf::IpAddress> incoming_ip;
 			unsigned short incoming_port;
 
 			// FIXME: Recieve can fail, check for errors.
 			if (socket.receive(packet, incoming_ip, incoming_port) == sf::Socket::Status::Done) {
-				Utils::printMsg("Recieved message from: " + incoming_ip.value().toString() + ":" + std::to_string(incoming_port));
+				std::uint8_t typeRaw;
+				if (!(packet >> typeRaw)) break;
+
+				switch (static_cast<TankMessageState>(typeRaw)) {
+				case TankMessageState::Join: {
+					JoinMessage join;
+					if (packet >> join.colour) {
+						Utils::printMsg("Join colour: " + join.colour);
+						game.NetworkJoin(join);
+					}
+					else Utils::printMsg("Join extraction failed", error);
+					break;
+				}
+				case TankMessageState::State: {
+					TankMessage message;
+					float bodyAngleValue = message.bodyRotation.asDegrees();
+					float barrelAngleValue = message.barrelRotation.asDegrees();
+					if (packet >> message.x >> message.y >> bodyAngleValue >> barrelAngleValue) {
+						Utils::printMsg("State: " + std::to_string(message.x) + ", " + std::to_string(message.y));
+						message.bodyRotation = sf::degrees(bodyAngleValue);
+						message.barrelRotation = sf::degrees(barrelAngleValue);
+						game.NetworkUpdate(dt, message);
+					}
+					else Utils::printMsg("State extraction failed", error);
+
+					break;
+				}
+				}
+				/*Utils::printMsg("Recieved message from: " + incoming_ip.value().toString() + ":" + std::to_string(incoming_port));
 				TankMessage message;
 
+				bodyAngleValue = message.bodyRotation.asDegrees();
+				barrelAngleValue = message.barrelRotation.asDegrees();
+				packet >> message.x >> message.y >> bodyAngleValue >> barrelAngleValue >> message.colour;
+
+				message.bodyRotation = sf::degrees(bodyAngleValue);
+				message.barrelRotation = sf::degrees(barrelAngleValue);
+				game.NetworkUpdate(dt, message);*/
 				// Read recieved data into TankMessage struct.
 				// FIXME: reading from packet can fail. Refer to documentation on how to
 				// handle errors and add error checking here.
-				float bodyAngleValue = message.bodyRotation.asDegrees();
-				float barrelAngleValue = message.barrelRotation.asDegrees();
-				packet >> message.x >> message.y >> bodyAngleValue >> barrelAngleValue >> message.colour;
+				
 				/*if (packet >> message.x) {
 					Utils::printMsg("Packet x is Recieved", MessageType::success);
 				}
@@ -122,21 +157,16 @@ int main() {
 					Utils::printMsg("Packet colour is Recieved", MessageType::success);
 				}*/
 				// Use the message data to update the game.
-				game.NetworkUpdate(dt, message);
+				
 			}
-			else {
+			/*else {
 				Utils::printMsg("Failed to recieve message from: " + incoming_ip.value().toString() + ":" + std::to_string(incoming_port), error);
-			}
+			}*/
 		}
 		else {
 			game.Update(dt);
-			// Get data structure from game, containing update message.
-			TankMessage message = game.GetNetworkUpdate();
-			// Translate our messgage struct to sf::Packet (very rudimentary conversion)
+			
 
-			float bodyAngleValue = message.bodyRotation.asDegrees();
-			float barrelAngleValue = message.barrelRotation.asDegrees();
-			packet << message.x << message.y << bodyAngleValue << barrelAngleValue <<message.colour;
 			/*if (packet >> message.x) {
 				Utils::printMsg("Packet x is Recieved", MessageType::success);
 			}
@@ -156,8 +186,29 @@ int main() {
 
 			// Send messages only as often as the send rate allows.
 			if (send_timer >= send_rate) {
+				if (!join_sent) {
+					sf::Packet joinPacket;
+					joinPacket << static_cast<std::uint8_t>(TankMessageState::Join) << game.GetJoinMessage().colour;
+
+					if (socket.send(joinPacket, observerIp, observer_port) == sf::Socket::Status::Done) {
+						Utils::printMsg("Sent join message", success);
+						join_sent = true;
+					}
+				}
+
+				// Get data structure from game, containing update message.
+				TankMessage message = game.GetNetworkUpdate();
+				sf::Packet statePacket;
+				// Translate our messgage struct to sf::Packet (very rudimentary conversion)
+
+				float bodyAngleValue = message.bodyRotation.asDegrees();
+				float barrelAngleValue = message.barrelRotation.asDegrees();
+				statePacket << static_cast<std::uint8_t>(TankMessageState::State) << message.x << message.y << bodyAngleValue << barrelAngleValue;
+				//message.bodyRotation = sf::degrees(bodyAngleValue);
+				//message.barrelRotation = sf::degrees(barrelAngleValue);
+
 				// FIXME: Send can fail, check for errors and adjust logic accordingly.
-				if (socket.send(packet, observerIp, observer_port) == sf::Socket::Status::Done) {
+				if (socket.send(statePacket, observerIp, observer_port) == sf::Socket::Status::Done) {
 					Utils::printMsg("Sent message to: " + observerIp.toString() + ":" + std::to_string(observer_port));
 				}
 				else {

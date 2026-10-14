@@ -72,12 +72,21 @@ void Game::Update(float dt)
 	tank.Update(dt);
 }
 
+JoinMessage Game::GetJoinMessage() const {
+	JoinMessage msg;
+	msg.colour = tank.colour;
+	return msg;
+}
+void Game::NetworkJoin(const JoinMessage& data) {
+	tank.colour = data.colour;
+}
+
 void Game::NetworkUpdate(float dt, TankMessage data) {
 	// Force position update from network data.
 	tank.position = { data.x, data.y };
 	tank.bodyRotation = { data.bodyRotation };
 	tank.barrelRotation = { data.barrelRotation };
-	tank.colour = data.colour;
+	//tank.colour = data.colour;
 	// Update tank with new position.
 	// NOTE: This assumets no inputs were detected and so the tank will only move according to 
 	// network updates. This is not ideal and prone to unexpected behaviour if game is extended

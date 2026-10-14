@@ -8,6 +8,8 @@ public:
 
 	void HandleEvents(const std::optional<sf::Event> event);
 	void Update(float dt);
+	JoinMessage GetJoinMessage() const;
+	void NetworkJoin(const JoinMessage& data);
 	void NetworkUpdate(float dt, TankMessage data);
 	void Render(sf::RenderWindow &window);
 	TankMessage GetNetworkUpdate();

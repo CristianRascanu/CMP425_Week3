@@ -1,7 +1,9 @@
 #pragma once
 #include <SFML\Graphics.hpp>
 #include <vector>
+#include <optional>
 #include "tank_message.h"
+
 
 class Tank
 {
